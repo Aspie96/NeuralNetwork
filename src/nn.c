@@ -7,6 +7,7 @@ struct NN {
 	int outputs;
 	double ***weights;
 	double **neurons;
+	double ***deltas;
 };
 
 double *nn_randomWeights(int size) {
@@ -15,7 +16,7 @@ double *nn_randomWeights(int size) {
 	retVal = (double*)malloc(sizeof(double) * size);
 	for(i = 0; i < size; i++) {
 		do {
-			retVal[i] = (double)rand() / RAND_MAX + 1;
+			retVal[i] = 1;
 		} while(!retVal[i]);
 	}
 	return retVal;
@@ -45,15 +46,17 @@ void nn_activate(double *nodes, int count, int bias) {
 	}
 }
 
-double nn_incrementWeight(double *weight, double increment) {
-	*weight += increment;
-	if(*weight < -NN_MAX_WEIGHT) {
-		*weight = -NN_MAX_WEIGHT;
+void nn_incrementWeights(double *weights, int number, double *deltas) {
+	int i;
+	for(i = 0; i < number; i++) {
+		weights[i] += deltas[i];
+		if(weights[i] < -NN_MAX_WEIGHT) {
+			weights[i] = -NN_MAX_WEIGHT;
+		}
+		if(weights[i] > NN_MAX_WEIGHT) {
+			weights[i] = NN_MAX_WEIGHT;
+		}
 	}
-	if(*weight > NN_MAX_WEIGHT) {
-		*weight = NN_MAX_WEIGHT;
-	}
-	return *weight;
 }
 
 NN *nn_create(int inputs, int levels, int npl, int outputs) {
@@ -67,19 +70,26 @@ NN *nn_create(int inputs, int levels, int npl, int outputs) {
 	retVal->outputs = outputs;
 
 	retVal->weights = (double***)malloc(sizeof(double**) * (levels + 2));
+	retVal->deltas = (double***)malloc(sizeof(double**) * (levels + 2));
 	retVal->weights[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
+	retVal->deltas[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
 	for(j = 0; j < inputs + 1; j++) {
 		retVal->weights[0][j] = nn_randomWeights(npl);
+		retVal->deltas[0][j] = (double*)calloc(npl, sizeof(double));
 	}
 	for(i = 1; i < levels + 1; i++) {
 		retVal->weights[i] = (double**)malloc(sizeof(double*) * (npl + 1));
+		retVal->deltas[i] = (double**)malloc(sizeof(double*) * (npl + 1));
 		for(j = 0; j < npl + 1; j++) {
 			retVal->weights[i][j] = nn_randomWeights(npl);
+			retVal->deltas[i][j] = (double*)calloc(npl, sizeof(double));
 		}
 	}
 	retVal->weights[levels + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
+	retVal->deltas[levels + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
 	for(j = 0; j < npl + 1; j++) {
-		retVal->weights[levels][j] = nn_randomWeights(outputs); /// TEST!!!
+		retVal->weights[levels + 1][j] = nn_randomWeights(outputs); /// TEST!!!
+		retVal->deltas[levels + 1][j] = (double*)calloc(outputs, sizeof(double));
 	}
 
 	retVal->neurons = (double**)malloc(sizeof(double*) * (levels + 2));
@@ -97,7 +107,8 @@ double nn_getError(NN *network, double *error, const double *inputs, const doubl
 	nn_forwardPropagate(network, output, inputs);
 	retVal = 0;
 	for(i = 0; i < network->outputs; i++) {
-		retVal += aux = error[i] = expected[i] - output[i];
+		aux = expected[i] - output[i];
+		retVal += aux * aux;
 		if(error) {
 			error[i] = aux;
 		}
@@ -117,31 +128,30 @@ void nn_forwardPropagate(NN *network, double *outputs, const double *inputs) {
 		nn_activate(network->neurons[i], network->npl + 1, 1);
 	}
 	nn_vectorTimesMatrix(network->neurons[network->levels + 1], network->npl + 1, network->outputs, network->neurons[network->levels], (const double**)network->weights[network->levels]);
+	nn_activate(network->neurons[network->levels + 1], network->outputs, 0);
 	memcpy(outputs, network->neurons[network->levels + 1], sizeof(double) * network->outputs);
 }
 
 void nn_backPropagate(NN *network, const double *error) {
-	int i, j, k, level, aux, delta;
+	int i, j, k, level, delta;
 	double weights[network->npl + 1], weight;
 	for(i = 0; i < network->outputs; i++) {
 		level = network->levels;
 		memset(weights, 0, sizeof(double) * (network->npl + 1));
 		for(j = 0; j < network->npl + 1; j++) {
-			aux = network->weights[level][j][i];
-			nn_incrementWeight(&network->weights[level][j][i], weights[j] = NN_DELTA * network->neurons[level][j] * error[i]);
-			weights[j] *= aux;
+			network->deltas[level][j][i] += weights[j] = NN_DELTA * network->neurons[level][j] * error[i];
+			if(network->neurons[level][j]) {
+				weights[j] *= network->weights[level][j][i];
+			}
 		}
 		level--;
 		for(; level > 0; level--) {
 			for(j = 0; j < network->npl + 1; j++) {
 				weight = 0;
-				for(k = 0; k < network->npl; k++) {
-					aux = network->weights[level][j][k];
-					delta = NN_DELTA * network->neurons[level][j] * weights[k];
-					nn_incrementWeight(&network->weights[level][j][k], delta);
-					weight += delta * aux;
-					if((((unsigned int)network->neurons[1] ^ 0xC0000000) & 0xF0000000) == 0) {
-						printf("%d %d %d %d\n", i, j, k, level);
+				if(network->neurons[level][j]) {
+					for(k = 0; k < network->npl; k++) {
+						network->deltas[level][j][k] += delta = NN_DELTA * network->neurons[level][j] * weights[k];
+						weight += delta * network->weights[level][j][k];
 					}
 				}
 				weights[i] = weight;
@@ -149,19 +159,38 @@ void nn_backPropagate(NN *network, const double *error) {
 		}
 		for(j = 0; j < network->inputs + 1; j++) {
 			for(k = 0; k < network->npl; k++) {
-				nn_incrementWeight(&network->weights[0][j][i], NN_DELTA * network->neurons[0][j] * weights[k]);
+				network->deltas[0][j][i] += NN_DELTA * network->neurons[0][j] * weights[k];
 			}
 		}
 	}
 }
 
-void nn_learn(NN *network, const double **inputs, const double **outputs, int entries) {
+void nn_refreshWeights(NN *network) {
+	int i, j;
+
+	for(j = 0; j < network->inputs + 1; j++) {
+		nn_incrementWeights(network->weights[0][j], network->npl, network->deltas[0][j]);
+		memset(network->deltas[0][j], 0, sizeof(double) * network->npl);
+	}
+	for(i = 1; i < network->levels + 1; i++) {
+		for(j = 0; j < network->npl + 1; j++) {
+			nn_incrementWeights(network->weights[i][j], network->npl, network->deltas[i][j]);
+			memset(network->deltas[i][j], 0, sizeof(double) * network->npl);
+		}
+	}
+	for(j = 0; j < network->npl + 1; j++) {
+		nn_incrementWeights(network->weights[network->levels + 1][j], network->outputs, network->deltas[network->levels + 1][j]);
+		memset(network->deltas[network->levels + 1][j], 0, sizeof(double) * network->outputs);
+	}
+}
+
+/*void nn_learn(NN *network, const double **inputs, const double **outputs, int entries) {
 	int tries;
 	double error;
 	do {
 
 	}while(error > NN_MAX_ERR && ++tries < NN_MAX_STEPS);
-}
+}*/
 
 void nn_destroy(NN *network) {
 	int i, j;
