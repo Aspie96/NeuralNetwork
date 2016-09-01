@@ -1,0 +1,7 @@
+#project
+
+#Code::Blocks
+*.depend
+*.layout
+bin/
+obj/

@@ -8,8 +8,8 @@
 
 #define NN_DELTA 0.01
 #define NN_MAX_ERR 0.01
-#define NN_MAX_STEPS 10000
-#define NN_MAX_WEIGHT 4
+#define NN_MAX_STEPS 1000
+#define NN_MAX_WEIGHT 100
 
 struct NN;
 typedef struct NN NN;
