@@ -1,0 +1,83 @@
+diff a/src/nn.c b/src/nn.c	(rejected hunks)
+@@ -15,7 +15,7 @@
+ 	retVal = (double*)malloc(sizeof(double) * size);
+ 	for(i = 0; i < size; i++) {
+ 		do {
+-			retVal[i] = rand() * 2.0D / RAND_MAX - 1;
++			retVal[i] = (double)rand() / RAND_MAX + 1;
+ 		} while(!retVal[i]);
+ 	}
+ 	return retVal;
+@@ -66,26 +66,26 @@
+ 	retVal->npl = npl;
+ 	retVal->outputs = outputs;
+ 
+-	retVal->weights = (double***)malloc(sizeof(double**) * (levels + 1));
+-	retVal->weights[0] = (double**)malloc(sizeof(double*) * inputs + 1);
++	retVal->weights = (double***)malloc(sizeof(double**) * (levels + 2));
++	retVal->weights[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
+ 	for(j = 0; j < inputs + 1; j++) {
+ 		retVal->weights[0][j] = nn_randomWeights(npl);
+ 	}
+-	for(i = 1; i < levels; i++) {
+-		retVal->weights[i] = (double**)malloc(sizeof(double*) * npl + 1);
++	for(i = 1; i < levels + 1; i++) {
++		retVal->weights[i] = (double**)malloc(sizeof(double*) * (npl + 1));
+ 		for(j = 0; j < npl + 1; j++) {
+ 			retVal->weights[i][j] = nn_randomWeights(npl);
+ 		}
+ 	}
+-	retVal->weights[levels] = (double**)malloc(sizeof(double*) * npl + 1);
++	retVal->weights[levels + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
+ 	for(j = 0; j < npl + 1; j++) {
+-		retVal->weights[levels][j] = nn_randomWeights(outputs);
++		retVal->weights[levels][j] = nn_randomWeights(outputs); /// TEST!!!
+ 	}
+ 
+ 	retVal->neurons = (double**)malloc(sizeof(double*) * (levels + 2));
+-	retVal->neurons[0] = (double*)malloc(sizeof(double) * inputs + 1);
++	retVal->neurons[0] = (double*)malloc(sizeof(double) * (inputs + 1));
+ 	for(i = 1; i < levels + 1; i++) {
+-		retVal->neurons[i] = (double*)malloc(sizeof(double) * npl + 1);
++		retVal->neurons[i] = (double*)malloc(sizeof(double) * (npl + 1));
+ 	}
+ 	retVal->neurons[levels + 1] = (double*)malloc(sizeof(double) * outputs);
+ 	return retVal;
+@@ -123,15 +123,15 @@
+ void nn_backPropagate(NN *network, const double *error) {
+ 	int i, j, k, level, aux, delta;
+ 	double weights[network->npl + 1], weight;
+-	memcpy(network->neurons[network->levels + 1], error, sizeof(double) * network->outputs);
+ 	for(i = 0; i < network->outputs; i++) {
+ 		level = network->levels;
+ 		memset(weights, 0, sizeof(double) * (network->npl + 1));
+ 		for(j = 0; j < network->npl + 1; j++) {
+ 			aux = network->weights[level][j][i];
+-			nn_incrementWeight(&network->weights[level][j][i], weights[j] = NN_DELTA * network->neurons[level][j] * network->neurons[level + 1][i]);
++			nn_incrementWeight(&network->weights[level][j][i], weights[j] = NN_DELTA * network->neurons[level][j] * error[i]);
+ 			weights[j] *= aux;
+ 		}
++		level--;
+ 		for(; level > 0; level--) {
+ 			for(j = 0; j < network->npl + 1; j++) {
+ 				weight = 0;
+@@ -140,12 +140,17 @@
+ 					delta = NN_DELTA * network->neurons[level][j] * weights[k];
+ 					nn_incrementWeight(&network->weights[level][j][k], delta);
+ 					weight += delta * aux;
++					if((((unsigned int)network->neurons[1] ^ 0xC0000000) & 0xF0000000) == 0) {
++						printf("%d %d %d %d\n", i, j, k, level);
++					}
+ 				}
+ 				weights[i] = weight;
+ 			}
+ 		}
+-		for(j = 0; j < network->npl + 1; j++) {
+-			nn_incrementWeight(&network->weights[level][j][i], NN_DELTA * network->neurons[1][j] * network->neurons[0][j]);
++		for(j = 0; j < network->inputs + 1; j++) {
++			for(k = 0; k < network->npl; k++) {
++				nn_incrementWeight(&network->weights[0][j][i], NN_DELTA * network->neurons[0][j] * weights[k]);
++			}
+ 		}
+ 	}
+ }

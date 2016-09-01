@@ -1,6 +1,3 @@
-///TODO: Propago erore all'indietro (per ora propago solo il peso).
-// Uso: http://courses.cs.washington.edu/courses/cse599/01wi/admin/Assignments/bpn.html
-
 #include "nn.h"
 
 struct NN {
@@ -136,8 +133,8 @@ void nn_forwardPropagate(NN *network, double *outputs, const double *inputs) {
 }
 
 void nn_backPropagate(NN *network, const double *error) {
-	int i, j, k, level;
-	double weights[network->npl + 1], weightsC[network->npl + 1], weight;
+	int i, j, k, level, delta;
+	double weights[network->npl + 1], weight;
 	for(i = 0; i < network->outputs; i++) {
 		level = network->levels;
 		memset(weights, 0, sizeof(double) * (network->npl + 1));
@@ -151,16 +148,15 @@ void nn_backPropagate(NN *network, const double *error) {
 		}
 		level--;
 		for(; level > 0; level--) {
-			memcpy(weightsC, weights, sizeof(double) * (network->npl + 1));
 			for(j = 0; j < network->npl + 1; j++) {
 				weight = 0;
 				if(network->neurons[level][j] > 0) {
 					for(k = 0; k < network->npl; k++) {
-						network->deltas[level][j][k] += network->neurons[level][j] * weightsC[k];
-						weight += weightsC[k] * network->weights[level][j][k];
+						network->deltas[level][j][k] += network->neurons[level][j] * weights[k];
+						weight += weights[k] * network->weights[level][j][k];
 					}
 				}
-				weights[j] = weight;
+				weights[i] = weight;
 			}
 		}
 		for(j = 0; j < network->inputs + 1; j++) {

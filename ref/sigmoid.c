@@ -1,6 +1,3 @@
-///TODO: Propago erore all'indietro (per ora propago solo il peso).
-// Uso: http://courses.cs.washington.edu/courses/cse599/01wi/admin/Assignments/bpn.html
-
 #include "nn.h"
 
 struct NN {
@@ -42,9 +39,7 @@ void nn_activate(double *nodes, int count, int bias) {
 		nodes[count - 1] = 1;
 	} else {
 		for(i = 0; i < count; i++) {
-			if(nodes[i] < 0) {
-				nodes[i] = 0;
-			}
+			nodes[i] = 1.0 / (1.0 + exp(-dGain * nodes[i]));
 		}
 	}
 }
@@ -52,7 +47,7 @@ void nn_activate(double *nodes, int count, int bias) {
 void nn_incrementWeights(double *weights, int number, double *deltas) {
 	int i;
 	for(i = 0; i < number; i++) {
-		weights[i] += deltas[i] * NN_DELTA;
+		weights[i] += deltas[i];
 		if(weights[i] < -NN_MAX_WEIGHT) {
 			weights[i] = -NN_MAX_WEIGHT;
 		}
@@ -137,14 +132,16 @@ void nn_forwardPropagate(NN *network, double *outputs, const double *inputs) {
 
 void nn_backPropagate(NN *network, const double *error) {
 	int i, j, k, level;
-	double weights[network->npl + 1], weightsC[network->npl + 1], weight;
+	double weights[network->npl + 1], weightsC[network->npl + 1], weight, deltas[network->npl + 1],deltasC[network->npl + 1], delta;
 	for(i = 0; i < network->outputs; i++) {
 		level = network->levels;
 		memset(weights, 0, sizeof(double) * (network->npl + 1));
+		memset(deltas, 0, sizeof(double) * (network->npl + 1));
 		for(j = 0; j < network->npl + 1; j++) {
 			if(network->neurons[level][j] > 0) {
 				weights[j] = error[i] * network->weights[level][j][i];
-				network->deltas[level][j][i] += network->neurons[level][j] * error[i];
+				network->deltas[level][j][i] += NN_DELTA * network->neurons[level][j] * error[i] * (1 - network->neurons[level][j]));
+				deltas[j] += error[i] * NN_DELTA * (network->neurons[level][j] * (1 - network->neurons[level][j]));
 			} else {
 				weights[j] = 0;
 			}
@@ -152,20 +149,24 @@ void nn_backPropagate(NN *network, const double *error) {
 		level--;
 		for(; level > 0; level--) {
 			memcpy(weightsC, weights, sizeof(double) * (network->npl + 1));
+			memcpy(deltasC, weights, sizeof(double) * (network->npl + 1));
 			for(j = 0; j < network->npl + 1; j++) {
 				weight = 0;
+				delta = 0;
 				if(network->neurons[level][j] > 0) {
 					for(k = 0; k < network->npl; k++) {
-						network->deltas[level][j][k] += network->neurons[level][j] * weightsC[k];
+						network->deltas[level][j][k] += network->neurons[level][j] * weightsC[k] * deltasC[k] * NN_DELTA * (1 - network->neurons[level][j]));
+						delta += weightsC[k] * deltasC[k] * NN_DELTA * (network->neurons[level][j] * (1 - network->neurons[level][j]));
 						weight += weightsC[k] * network->weights[level][j][k];
 					}
 				}
+				deltas[j] = 0;
 				weights[j] = weight;
 			}
 		}
 		for(j = 0; j < network->inputs + 1; j++) {
 			for(k = 0; k < network->npl; k++) {
-				network->deltas[0][j][i] += network->neurons[0][j] * weights[k];
+				network->deltas[0][j][k] += network->neurons[0][j] * weights[k] * deltas[k] * NN_DELTA * (network->neurons[level][j] * (1 - network->neurons[0][j]));
 			}
 		}
 	}

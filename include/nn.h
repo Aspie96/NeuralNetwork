@@ -6,10 +6,10 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define NN_DELTA 0.05
+#define NN_DELTA 0.005
 #define NN_MAX_ERR 0.01
 #define NN_MAX_STEPS 1000
-#define NN_MAX_WEIGHT 1000
+#define NN_MAX_WEIGHT 4
 
 struct NN;
 typedef struct NN NN;
