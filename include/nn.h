@@ -1,17 +1,24 @@
 #ifndef NN_H
 #define NN_H
 
-#include <math.h>
-#include <mem.h>
-#include <stdlib.h>
-#include <time.h>
-
-#define NN_DELTA 0.005
+#define NN_DELTA 0.3
+#define NN_MOMENTUM 0.01
 #define NN_MAX_ERR 0.01
 #define NN_MAX_STEPS 1000
-#define NN_MAX_WEIGHT 4
+#define NN_MAX_WEIGHT 1000
 
-struct NN;
+#define NN_AF(x) (1 / (1 + exp(-(x))))
+#define NN_AF_DER(fx) ((fx) * (1 - (fx)))
+
+struct NN {
+	int inputs;
+	int levels;
+	int npl;
+	int outputs;
+	double ***weights;
+	double **neurons;
+	double **deltas;
+};
 typedef struct NN NN;
 
 NN *nn_create(int inputs, int levels, int npl, int outputs);

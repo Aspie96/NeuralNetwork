@@ -1,17 +1,12 @@
 ///TODO: Propago erore all'indietro (per ora propago solo il peso).
 // Uso: http://courses.cs.washington.edu/courses/cse599/01wi/admin/Assignments/bpn.html
+// Asko for validation to: http://ai.stackexchange.com/
 
 #include "nn.h"
-
-struct NN {
-	int inputs;
-	int levels;
-	int npl;
-	int outputs;
-	double ***weights;
-	double **neurons;
-	double ***deltas;
-};
+#include <math.h>
+#include <mem.h>
+#include <stdlib.h>
+#include <time.h>
 
 double *nn_randomWeights(int size) {
 	double *retVal;
@@ -19,7 +14,7 @@ double *nn_randomWeights(int size) {
 	retVal = (double*)malloc(sizeof(double) * size);
 	for(i = 0; i < size; i++) {
 		do {
-			retVal[i] = 1;
+			retVal[i] = rand() * 2.0d / RAND_MAX - 1;
 		} while(!retVal[i]);
 	}
 	return retVal;
@@ -42,9 +37,7 @@ void nn_activate(double *nodes, int count, int bias) {
 		nodes[count - 1] = 1;
 	} else {
 		for(i = 0; i < count; i++) {
-			if(nodes[i] < 0) {
-				nodes[i] = 0;
-			}
+			nodes[i] = NN_AF(nodes[i]);
 		}
 	}
 }
@@ -73,34 +66,31 @@ NN *nn_create(int inputs, int levels, int npl, int outputs) {
 	retVal->outputs = outputs;
 
 	retVal->weights = (double***)malloc(sizeof(double**) * (levels + 2));
-	retVal->deltas = (double***)malloc(sizeof(double**) * (levels + 2));
 	retVal->weights[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
-	retVal->deltas[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
 	for(j = 0; j < inputs + 1; j++) {
 		retVal->weights[0][j] = nn_randomWeights(npl);
-		retVal->deltas[0][j] = (double*)calloc(npl, sizeof(double));
 	}
 	for(i = 1; i < levels + 1; i++) {
 		retVal->weights[i] = (double**)malloc(sizeof(double*) * (npl + 1));
-		retVal->deltas[i] = (double**)malloc(sizeof(double*) * (npl + 1));
 		for(j = 0; j < npl + 1; j++) {
 			retVal->weights[i][j] = nn_randomWeights(npl);
-			retVal->deltas[i][j] = (double*)calloc(npl, sizeof(double));
 		}
 	}
 	retVal->weights[levels + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
-	retVal->deltas[levels + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
 	for(j = 0; j < npl + 1; j++) {
 		retVal->weights[levels + 1][j] = nn_randomWeights(outputs); /// TEST!!!
-		retVal->deltas[levels + 1][j] = (double*)calloc(outputs, sizeof(double));
 	}
 
 	retVal->neurons = (double**)malloc(sizeof(double*) * (levels + 2));
+	retVal->deltas = (double**)malloc(sizeof(double*) * (levels + 2));
 	retVal->neurons[0] = (double*)malloc(sizeof(double) * (inputs + 1));
+	retVal->deltas[0] = (double*)calloc(inputs + 1, sizeof(double));
 	for(i = 1; i < levels + 1; i++) {
 		retVal->neurons[i] = (double*)malloc(sizeof(double) * (npl + 1));
+		retVal->deltas[i] = (double*)calloc(npl + 1, sizeof(double));
 	}
 	retVal->neurons[levels + 1] = (double*)malloc(sizeof(double) * outputs);
+	retVal->deltas[levels + 1] = (double*)calloc(outputs, sizeof(double));
 	return retVal;
 }
 
@@ -113,7 +103,7 @@ double nn_getError(NN *network, double *error, const double *inputs, const doubl
 		aux = expected[i] - output[i];
 		retVal += aux * aux;
 		if(error) {
-			error[i] = aux;
+			error[i] += aux;
 		}
 	}
 	retVal = sqrt(retVal);
@@ -135,43 +125,123 @@ void nn_forwardPropagate(NN *network, double *outputs, const double *inputs) {
 	memcpy(outputs, network->neurons[network->levels + 1], sizeof(double) * network->outputs);
 }
 
+
 void nn_backPropagate(NN *network, const double *error) {
+	int level, j, k;
+	double deltas[network->npl + 1], deltasC[network->npl + 1], delta;	// TODO: deltas[max].
+	level = network->levels + 1;
+	for(j = 0; j < network->outputs; j++) {
+		delta = (NN_AF_DER(network->neurons[level][j]) * error[j]);
+		deltas[j] = delta;
+		network->deltas[level][j] += delta;
+	}
+	level--;
+	for(j = 0; j < network->npl + 1; j++) {
+		memcpy(deltasC, deltas, sizeof(double) * (network->outputs));
+		delta = 0;
+		for(k = 0; k < network->outputs; k++) {
+			delta += network->weights[level][j][k] * deltasC[k];
+		}
+		deltas[j] = NN_AF_DER(network->neurons[level][j]) * delta;
+		network->deltas[level][j] += delta;
+	}
+	for(; level > 0; level--) {	// Tutto in realtà segue questo algoritmo (è ripetuto per via del primo e dell'ultimo layer).
+		for(j = 0; j < network->npl + 1; j++) {
+			memcpy(deltasC, deltas, sizeof(double) * (network->npl + 1));
+			delta = 0;
+			for(k = 0; k < network->npl; k++) {
+				delta += network->weights[level][j][k] * deltasC[k];
+			}
+			deltas[j] = NN_AF_DER(network->neurons[level][j]) * delta;
+			network->deltas[level][j] += delta;
+		}
+	}
+	for(j = 0; j < network->inputs + 1; j++) {
+		delta = 0;
+		for(k = 0; k < network->npl; k++) {
+			delta += network->weights[level][j][k] * deltas[k];
+		}
+		deltas[j] = NN_AF_DER(network->neurons[level][j]) * delta;
+		network->deltas[level][j] += delta;
+	}
+}
+
+
+/*void nn_backPropagate(NN *network, const double *error) {
 	int i, j, k, level;
-	double weights[network->npl + 1], weightsC[network->npl + 1], weight;
+	double deltas[network->npl + 1], deltasC[network->npl + 1], delta;
 	for(i = 0; i < network->outputs; i++) {
 		level = network->levels;
-		memset(weights, 0, sizeof(double) * (network->npl + 1));
+		memset(deltas, 0, sizeof(double) * (network->npl + 1));
 		for(j = 0; j < network->npl + 1; j++) {
 			if(network->neurons[level][j] > 0) {
-				weights[j] = error[i] * network->weights[level][j][i];
+				deltas[j] = error[i] * network->weights[level][j][i];
 				network->deltas[level][j][i] += network->neurons[level][j] * error[i];
 			} else {
-				weights[j] = 0;
+				deltas[j] = 0;
 			}
 		}
 		level--;
 		for(; level > 0; level--) {
-			memcpy(weightsC, weights, sizeof(double) * (network->npl + 1));
+			memcpy(deltasC, deltas, sizeof(double) * (network->npl + 1));
 			for(j = 0; j < network->npl + 1; j++) {
-				weight = 0;
+				delta = 0;
 				if(network->neurons[level][j] > 0) {
 					for(k = 0; k < network->npl; k++) {
-						network->deltas[level][j][k] += network->neurons[level][j] * weightsC[k];
-						weight += weightsC[k] * network->weights[level][j][k];
+						network->deltas[level][j][k] += network->neurons[level][j] * deltasC[k];
+						delta += deltasC[k] * network->weights[level][j][k];
 					}
 				}
-				weights[j] = weight;
+				deltas[j] = delta;
 			}
 		}
 		for(j = 0; j < network->inputs + 1; j++) {
 			for(k = 0; k < network->npl; k++) {
-				network->deltas[0][j][i] += network->neurons[0][j] * weights[k];
+				network->deltas[0][j][i] += network->neurons[0][j] * deltas[k];
 			}
 		}
 	}
-}
+}*/
+
 
 void nn_refreshWeights(NN *network) {
+	int level, i, j;
+
+	memset(network->deltas[0], 0, sizeof(double) * network->inputs + 1);
+	level = 0;
+	for(i = 0; i < network->inputs; i++) {
+		for(j = 0; j < network->npl; j++) {
+			network->weights[level][i][j] += NN_DELTA * network->neurons[level][i] * network->deltas[level + 1][j];
+		}
+	}
+	for(j = 0; j < network->npl; j++) {
+		network->weights[level][i][j] = NN_DELTA * NN_AF(network->neurons[level][i]) * network->deltas[level + 1][j];
+	}
+	memset(network->deltas[level + 1], 0, sizeof(double) * network->npl + 1);
+	for(level = 1; level < network->levels; level++) {
+		for(i = 0; i < network->npl; i++) {
+			for(j = 0; j < network->npl; j++) {
+				network->weights[level][i][j] += NN_DELTA * network->neurons[level][i] * network->deltas[level + 1][j];
+			}
+		}
+		for(j = 0; j < network->npl; j++) {
+			network->weights[level][i][j] = NN_DELTA * NN_AF(network->neurons[level][i]) * network->deltas[level + 1][j];
+		}
+		memset(network->deltas[level + 1], 0, sizeof(double) * network->npl + 1);
+	}
+	for(i = 0; i < network->npl; i++) {
+		for(j = 0; j < network->outputs; j++) {
+			network->weights[level][i][j] += NN_DELTA * network->neurons[level][i] * network->deltas[level + 1][j];
+		}
+	}
+	for(j = 0; j < network->outputs; j++) {
+		network->weights[level][i][j] = NN_DELTA * NN_AF(network->neurons[level][i]) * network->deltas[level + 1][j];
+	}
+	memset(network->deltas[level + 1], 0, sizeof(double) * network->outputs + 1);
+}
+
+
+/*void nn_refreshWeights(NN *network) {
 	int i, j;
 
 	for(j = 0; j < network->inputs + 1; j++) {
@@ -188,7 +258,7 @@ void nn_refreshWeights(NN *network) {
 		nn_incrementWeights(network->weights[network->levels + 1][j], network->outputs, network->deltas[network->levels + 1][j]);
 		memset(network->deltas[network->levels + 1][j], 0, sizeof(double) * network->outputs);
 	}
-}
+}*/
 
 /*void nn_learn(NN *network, const double **inputs, const double **outputs, int entries) {
 	int tries;
@@ -199,7 +269,7 @@ void nn_refreshWeights(NN *network) {
 }*/
 
 void nn_destroy(NN *network) {
-	int i, j;
+	/*int i, j;
 	for(j = 0; j < network->inputs; j++) {
 		free(network->weights[0][j]);
 	}
@@ -215,5 +285,5 @@ void nn_destroy(NN *network) {
 		free(network->neurons[i]);
 	}
 	free(network->neurons);
-	free(network);
+	free(network);*/
 }
