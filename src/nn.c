@@ -46,12 +46,6 @@ void nn_incrementWeights(double *weights, int number, double *deltas) {
 	int i;
 	for(i = 0; i < number; i++) {
 		weights[i] += deltas[i] * NN_DELTA;
-		if(weights[i] < -NN_MAX_WEIGHT) {
-			weights[i] = -NN_MAX_WEIGHT;
-		}
-		if(weights[i] > NN_MAX_WEIGHT) {
-			weights[i] = NN_MAX_WEIGHT;
-		}
 	}
 }
 
@@ -136,24 +130,25 @@ void nn_backPropagate(NN *network, const double *error) {
 		network->deltas[level][j] += delta;
 	}
 	level--;
+	memcpy(deltasC, deltas, sizeof(double) * (network->outputs));
 	for(j = 0; j < network->npl + 1; j++) {
-		memcpy(deltasC, deltas, sizeof(double) * (network->outputs));
 		delta = 0;
 		for(k = 0; k < network->outputs; k++) {
 			delta += network->weights[level][j][k] * deltasC[k];
 		}
 		deltas[j] = NN_AF_DER(network->neurons[level][j]) * delta;
-		network->deltas[level][j] += delta;
+		network->deltas[level][j] += deltas[j];
 	}
+	level--;
 	for(; level > 0; level--) {	// Tutto in realtà segue questo algoritmo (è ripetuto per via del primo e dell'ultimo layer).
+		memcpy(deltasC, deltas, sizeof(double) * (network->npl + 1));
 		for(j = 0; j < network->npl + 1; j++) {
-			memcpy(deltasC, deltas, sizeof(double) * (network->npl + 1));
 			delta = 0;
 			for(k = 0; k < network->npl; k++) {
 				delta += network->weights[level][j][k] * deltasC[k];
 			}
 			deltas[j] = NN_AF_DER(network->neurons[level][j]) * delta;
-			network->deltas[level][j] += delta;
+			network->deltas[level][j] += deltas[j];
 		}
 	}
 	for(j = 0; j < network->inputs + 1; j++) {
@@ -162,7 +157,7 @@ void nn_backPropagate(NN *network, const double *error) {
 			delta += network->weights[level][j][k] * deltas[k];
 		}
 		deltas[j] = NN_AF_DER(network->neurons[level][j]) * delta;
-		network->deltas[level][j] += delta;
+		network->deltas[level][j] += deltas[j];
 	}
 }
 

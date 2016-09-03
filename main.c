@@ -3,7 +3,7 @@
 #include "nn.h"
 
 int main() {
-	NN *myNet = nn_create(2, 1, 1, 1);
+	NN *myNet = nn_create(2, 2, 2, 1);
 	double input0[2] = {0, 0};
 	double input1[2] = {0, 1};
 	double input2[2] = {1, 0};
@@ -14,7 +14,7 @@ int main() {
 	double output2[1] = { 0 };
 	double output3[1] = { 1 };
 	int i;
-	for(i = 0; i < 5000; i++) {
+	for(i = 0; i < 50000; i++) {
 		nn_getError(myNet, error, input0, output0);
 		nn_backPropagate(myNet, error);
 		nn_refreshWeights(myNet);
