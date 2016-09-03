@@ -11,7 +11,7 @@
 
 struct NN {
 	int inputs;
-	int levels;
+	int layers;
 	int npl;
 	int outputs;
 	double ***weights;
@@ -20,7 +20,7 @@ struct NN {
 };
 typedef struct NN NN;
 
-NN *nn_create(int inputs, int levels, int npl, int outputs);
+NN *nn_create(int inputs, int layers, int npl, int outputs);
 void nn_forwardPropagate(NN *network, double *outputs, const double *inputs);
 double nn_getError(NN *network, double *error, const double *inputs, const double *expected);
 void nn_backPropagate(NN *network, const double *error);

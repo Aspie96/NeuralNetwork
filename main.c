@@ -14,7 +14,7 @@ int main() {
 	double output2[1] = { 0 };
 	double output3[1] = { 1 };
 	int i;
-	for(i = 0; i < 50000; i++) {
+	for(i = 0; i < 5000; i++) {
 		nn_getError(myNet, error, input0, output0);
 		nn_backPropagate(myNet, error);
 		nn_refreshWeights(myNet);
