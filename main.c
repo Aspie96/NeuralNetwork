@@ -10,11 +10,11 @@ int main() {
 	double input3[2] = {1, 1};
 	double error[1] = { 0 };
 	double output0[1] = { 0 };
-	double output1[1] = { 0 };
-	double output2[1] = { 0 };
-	double output3[1] = { 1 };
+	double output1[1] = { 1 };
+	double output2[1] = { 1 };
+	double output3[1] = { 0 };
 	int i;
-	for(i = 0; i < 5000; i++) {
+	for(i = 0; i < 500000; i++) {
 		nn_getError(myNet, error, input0, output0);
 		nn_backPropagate(myNet, error);
 		nn_refreshWeights(myNet);

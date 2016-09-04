@@ -1,6 +1,11 @@
-///TODO: Propago erore all'indietro (per ora propago solo il peso).
-// Uso: http://courses.cs.washington.edu/courses/cse599/01wi/admin/Assignments/bpn.html
-// Asko for validation to: http://ai.stackexchange.com/
+/// Uso: http://courses.cs.washington.edu/courses/cse599/01wi/admin/Assignments/bpn.html
+/// Asko for validation to: http://ai.stackexchange.com/
+/// Valori tipici da: https://en.wikibooks.org/wiki/Artificial_Neural_Networks/Neural_Network_Basics
+
+/// Considero l'idea di tornare a salvare i dw per ogni peso, anziché per ogni neurone. Questo permette, tra l'altro, di implementare, oltre alla modalità batch, anche il momento.
+/// Per il momento, se lo implemento, ad ogni giro scambio i puntatori oldDeltas e deltas: soluzione intelligente per risparmiare operazioni.
+
+/// http://stackoverflow.com/questions/13095938/can-somebody-please-explain-the-backpropagation-algorithm-to-me
 
 #include "nn.h"
 #include <math.h>
@@ -120,6 +125,7 @@ static inline void nn_backPropagateFunc(NN *network, int *layer, double *deltas,
 
 void nn_backPropagate(NN *network, const double *error) {
 	int layer, i;
+	/// Quando implementerò il deltas a tre puntatori, qui non cambierà molto e continuerò ad utilizzare deltasC e deltas, vettori così come sono ora (e avrà ancora più senso).
 	double deltas[network->npl + 1], deltasC[network->npl + 1], delta;
 	layer = network->layers + 1;
 	for(i = 0; i < network->outputs; i++) {
@@ -138,14 +144,15 @@ void nn_backPropagate(NN *network, const double *error) {
 
 static inline void nn_refreshWeightsFunc(NN *network, int *layer, int l1count, int l2count) {
 	int i, j;
-	for(i = 0; i < l1count; i++) {
+	for(i = 0; i < l1count + 1; i++) {
 		for(j = 0; j < l2count; j++) {
 			network->weights[*layer][i][j] += NN_DELTA * network->neurons[*layer][i] * network->deltas[*layer + 1][j];
 		}
 	}
-	for(j = 0; j < l2count; j++) {
+	// Copiare formule senza capirle: http://stackoverflow.com/questions/13095938/can-somebody-please-explain-the-backpropagation-algorithm-to-me
+	/*for(j = 0; j < l2count; j++) {
 		network->weights[*layer][i][j] = NN_DELTA * NN_AF(network->neurons[*layer][i]) * network->deltas[*layer + 1][j];
-	}
+	}*/
 	memset(network->deltas[*layer + 1], 0, sizeof(double) * l2count + 1);
 	(*layer)++;
 }
@@ -153,7 +160,7 @@ static inline void nn_refreshWeightsFunc(NN *network, int *layer, int l1count, i
 void nn_refreshWeights(NN *network) {
 	int layer;
 
-	memset(network->deltas[0], 0, sizeof(double) * network->inputs + 1);
+	memset(network->deltas[0], 0, sizeof(double) * (network->inputs + 1));
 	layer = 0;
 	nn_refreshWeightsFunc(network, &layer, network->inputs, network->npl);
 	while(layer < network->layers) {
