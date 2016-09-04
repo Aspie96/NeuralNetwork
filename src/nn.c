@@ -1,12 +1,3 @@
-/// Uso: http://courses.cs.washington.edu/courses/cse599/01wi/admin/Assignments/bpn.html
-/// Asko for validation to: http://ai.stackexchange.com/
-/// Valori tipici da: https://en.wikibooks.org/wiki/Artificial_Neural_Networks/Neural_Network_Basics
-
-/// Considero l'idea di tornare a salvare i dw per ogni peso, anziché per ogni neurone. Questo permette, tra l'altro, di implementare, oltre alla modalità batch, anche il momento.
-/// Per il momento, se lo implemento, ad ogni giro scambio i puntatori oldDeltas e deltas: soluzione intelligente per risparmiare operazioni.
-
-/// http://stackoverflow.com/questions/13095938/can-somebody-please-explain-the-backpropagation-algorithm-to-me
-
 #include "nn.h"
 #include <math.h>
 #include <mem.h>
@@ -35,32 +26,35 @@ NN *nn_create(int inputs, int layers, int npl, int outputs) {
 	retVal->npl = npl;
 	retVal->outputs = outputs;
 
+	retVal->deltas = (double***)malloc(sizeof(double**) * (layers + 2));
 	retVal->weights = (double***)malloc(sizeof(double**) * (layers + 2));
 	retVal->weights[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
+	retVal->deltas[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
 	for(j = 0; j < inputs + 1; j++) {
 		retVal->weights[0][j] = nn_randomWeights(npl);
+		retVal->deltas[0][j] = (double*)calloc(npl, sizeof(double));
 	}
 	for(i = 1; i < layers + 1; i++) {
 		retVal->weights[i] = (double**)malloc(sizeof(double*) * (npl + 1));
+		retVal->deltas[i] = (double**)malloc(sizeof(double*) * (npl + 1));
 		for(j = 0; j < npl + 1; j++) {
 			retVal->weights[i][j] = nn_randomWeights(npl);
+			retVal->deltas[i][j] = (double*)calloc(npl, sizeof(double));
 		}
 	}
 	retVal->weights[layers + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
+	retVal->deltas[layers + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
 	for(j = 0; j < npl + 1; j++) {
 		retVal->weights[layers + 1][j] = nn_randomWeights(outputs);
+		retVal->deltas[layers + 1][j] = (double*)calloc(outputs, sizeof(double));
 	}
 
 	retVal->neurons = (double**)malloc(sizeof(double*) * (layers + 2));
-	retVal->deltas = (double**)malloc(sizeof(double*) * (layers + 2));
 	retVal->neurons[0] = (double*)malloc(sizeof(double) * (inputs + 1));
-	retVal->deltas[0] = (double*)calloc(inputs + 1, sizeof(double));
 	for(i = 1; i < layers + 1; i++) {
 		retVal->neurons[i] = (double*)malloc(sizeof(double) * (npl + 1));
-		retVal->deltas[i] = (double*)calloc(npl + 1, sizeof(double));
 	}
 	retVal->neurons[layers + 1] = (double*)malloc(sizeof(double) * outputs);
-	retVal->deltas[layers + 1] = (double*)calloc(outputs, sizeof(double));
 	return retVal;
 }
 
@@ -73,7 +67,7 @@ double nn_getError(NN *network, double *error, const double *inputs, const doubl
 		aux = expected[i] - output[i];
 		retVal += aux * aux;
 		if(error) {
-			error[i] += aux;
+			error[i] = aux;
 		}
 	}
 	retVal = sqrt(retVal);
@@ -113,25 +107,23 @@ static inline void nn_backPropagateFunc(NN *network, int *layer, double *deltas,
 	double delta;
 	memcpy(deltasC, deltas, sizeof(double) * (network->npl + 1));
 	for(i = 0; i < l1count; i++) {
-		delta = 0;
+		deltas[i] = 0;
 		for(j = 0; j < l2count; j++) {
-			delta += network->weights[*layer][i][j] * deltasC[j];
+			delta = NN_AF_DER(network->neurons[*layer][i]) * network->weights[*layer][i][j] * deltasC[j];
+			deltas[i] += delta;
+			network->deltas[*layer][i][j] += network->neurons[*layer][i] * deltasC[j];
 		}
-		deltas[i] = NN_AF_DER(network->neurons[*layer][i]) * delta;
-		network->deltas[*layer][i] += deltas[i];
 	}
 	(*layer)--;
 }
 
 void nn_backPropagate(NN *network, const double *error) {
 	int layer, i;
-	/// Quando implementerò il deltas a tre puntatori, qui non cambierà molto e continuerò ad utilizzare deltasC e deltas, vettori così come sono ora (e avrà ancora più senso).
 	double deltas[network->npl + 1], deltasC[network->npl + 1], delta;
 	layer = network->layers + 1;
 	for(i = 0; i < network->outputs; i++) {
 		delta = (NN_AF_DER(network->neurons[layer][i]) * error[i]);
 		deltas[i] = delta;
-		network->deltas[layer][i] += delta;
 	}
 	layer--;
 	nn_backPropagateFunc(network, &layer, deltas, deltasC, network->npl + 1, network->outputs);
@@ -146,21 +138,16 @@ static inline void nn_refreshWeightsFunc(NN *network, int *layer, int l1count, i
 	int i, j;
 	for(i = 0; i < l1count + 1; i++) {
 		for(j = 0; j < l2count; j++) {
-			network->weights[*layer][i][j] += NN_DELTA * network->neurons[*layer][i] * network->deltas[*layer + 1][j];
+			network->weights[*layer][i][j] += NN_DELTA * network->deltas[*layer][i][j];
+			network->deltas[*layer][i][j] = 0;
 		}
 	}
-	// Copiare formule senza capirle: http://stackoverflow.com/questions/13095938/can-somebody-please-explain-the-backpropagation-algorithm-to-me
-	/*for(j = 0; j < l2count; j++) {
-		network->weights[*layer][i][j] = NN_DELTA * NN_AF(network->neurons[*layer][i]) * network->deltas[*layer + 1][j];
-	}*/
-	memset(network->deltas[*layer + 1], 0, sizeof(double) * l2count + 1);
 	(*layer)++;
 }
 
 void nn_refreshWeights(NN *network) {
 	int layer;
 
-	memset(network->deltas[0], 0, sizeof(double) * (network->inputs + 1));
 	layer = 0;
 	nn_refreshWeightsFunc(network, &layer, network->inputs, network->npl);
 	while(layer < network->layers) {
@@ -171,13 +158,21 @@ void nn_refreshWeights(NN *network) {
 
 
 
-/*void nn_learn(NN *network, const double **inputs, const double **outputs, int entries) {
-	int tries;
-	double error;
-	do {
+void nn_learn(NN *network, int entries, const double inputs[entries][network->inputs], const double outputs[entries][network->outputs]) {
+	int tries, i;
+	double error, deltas[network->outputs];
 
-	}while(error > NN_MAX_ERR && ++tries < NN_MAX_STEPS);
-}*/
+	tries = 0;
+	do {
+		error = 0;
+		for(i = 0; i < entries; i++) {
+			error += nn_getError(network, deltas, inputs[i], outputs[i]);
+			nn_backPropagate(network, deltas);
+		}
+		nn_refreshWeights(network);
+		error /= entries;
+	} while(error > NN_MAX_ERR && ++tries < NN_MAX_STEPS);
+}
 
 void nn_destroy(NN *network) {
 	/*int i, j;
