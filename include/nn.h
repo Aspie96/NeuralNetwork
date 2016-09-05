@@ -4,7 +4,7 @@
 #define NN_DELTA 0.3
 #define NN_MOMENTUM 0.01	///TODO: Consider adding momentum.
 #define NN_MAX_ERR 0.01
-#define NN_MAX_STEPS 500000
+#define NN_MAX_STEPS 50000
 
 #define NN_AF(x) (1 / (1 + exp(-(x))))
 #define NN_AF_DER(fx) ((fx) * (1 - (fx)))

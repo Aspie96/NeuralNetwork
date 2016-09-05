@@ -118,8 +118,15 @@ static inline void nn_backPropagateFunc(NN *network, int *layer, double *deltas,
 }
 
 void nn_backPropagate(NN *network, const double *error) {
-	int layer, i;
-	double deltas[network->npl + 1], deltasC[network->npl + 1], delta;
+	int layer, i, maxc;
+	maxc = network->inputs;
+	if(network->npl > network->inputs) {
+		maxc = network->inputs + 1;
+	}
+	if(network->outputs > maxc) {
+		maxc = network->outputs;
+	}
+	double deltas[maxc], deltasC[maxc], delta;
 	layer = network->layers + 1;
 	for(i = 0; i < network->outputs; i++) {
 		delta = (NN_AF_DER(network->neurons[layer][i]) * error[i]);
@@ -168,6 +175,7 @@ void nn_learn(NN *network, int entries, const double inputs[entries][network->in
 		for(i = 0; i < entries; i++) {
 			error += nn_getError(network, deltas, inputs[i], outputs[i]);
 			nn_backPropagate(network, deltas);
+			///nn_refreshWeights(network);	// Here seems much better.
 		}
 		nn_refreshWeights(network);
 		error /= entries;
