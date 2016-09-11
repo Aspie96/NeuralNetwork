@@ -24,10 +24,10 @@ NN *nn_create(int inputs, int layers, int npl, int outputs) {
 	retVal->npl = npl;
 	retVal->outputs = outputs;
 
-	retVal->weights = (double***)malloc(sizeof(double**) * (layers + 2));
+	retVal->weights = (double***)malloc(sizeof(double**) * (layers + 1));
 	retVal->weights[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
 #ifdef NN_MOMENTUM
-	retVal->momentum = (double***)malloc(sizeof(double**) * (layers + 2));
+	retVal->momentum = (double***)malloc(sizeof(double**) * (layers + 1));
 	retVal->momentum[0] = (double**)malloc(sizeof(double*) * (inputs + 1));
 #endif /* NN_MOMENTUM */
 	for(j = 0; j < inputs + 1; j++) {
@@ -36,7 +36,7 @@ NN *nn_create(int inputs, int layers, int npl, int outputs) {
 		retVal->momentum[0][j] = (double*)calloc(npl, sizeof(double));
 #endif /* NN_MOMENTUM */
 	}
-	for(i = 1; i < layers + 1; i++) {
+	for(i = 1; i < layers; i++) {
 		retVal->weights[i] = (double**)malloc(sizeof(double*) * (npl + 1));
 #ifdef NN_MOMENTUM
 		retVal->momentum[i] = (double**)malloc(sizeof(double*) * (npl + 1));
@@ -48,14 +48,14 @@ NN *nn_create(int inputs, int layers, int npl, int outputs) {
 #endif /* NN_MOMENTUM */
 		}
 	}
-	retVal->weights[layers + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
+	retVal->weights[layers] = (double**)malloc(sizeof(double*) * (npl + 1));
 #ifdef NN_MOMENTUM
-	retVal->momentum[layers + 1] = (double**)malloc(sizeof(double*) * (npl + 1));
+	retVal->momentum[layers] = (double**)malloc(sizeof(double*) * (npl + 1));
 #endif /* NN_MOMENTUM */
 	for(j = 0; j < npl + 1; j++) {
-		retVal->weights[layers + 1][j] = nn_randomWeights(outputs);
+		retVal->weights[layers][j] = nn_randomWeights(outputs);
 #ifdef NN_MOMENTUM
-		retVal->momentum[layers + 1][j] = (double*)calloc(outputs, sizeof(double));
+		retVal->momentum[layers][j] = (double*)calloc(outputs, sizeof(double));
 #endif /* NN_MOMENTUM */
 	}
 
@@ -136,8 +136,9 @@ static inline void nn_backPropagateFunc(NN *network, int *layer, double *deltas,
 
 void nn_backPropagate(NN *network, const double *error) {
 	int layer, i, maxc;
-	maxc = network->inputs;
 	if(network->npl > network->inputs) {
+		maxc = network->npl + 1;
+	} else {
 		maxc = network->inputs + 1;
 	}
 	if(network->outputs > maxc) {
@@ -191,4 +192,56 @@ void nn_destroy(NN *network) {
 	}
 	free(network->neurons);
 	free(network);*/
+}
+
+
+static inline void nn_serializeFunc(FILE *fp, int count1, int count2, double **matrix) {
+	int i, j;
+	for(i = 0; i < count1; i++) {
+		for(j = 0; j < count2 - 1; j++) {
+			fprintf(fp, "%f\t", matrix[i][j]);
+		}
+		fprintf(fp, "%f\n", matrix[i][j]);
+	}
+}
+
+void nn_serialize(NN *network, FILE *fp) {
+	int i;
+
+	fprintf(fp, "%d\t%d\t%d\t%d\n\n", network->inputs, network->layers, network->npl, network->outputs);
+	nn_serializeFunc(fp, network->inputs + 1, network->npl, network->weights[0]);
+	fprintf(fp, "\n");
+	for(i = 1; i < network->layers; i++) {
+		nn_serializeFunc(fp, network->npl + 1, network->npl, network->weights[i]);
+		fprintf(fp, "\n");
+	}
+	nn_serializeFunc(fp, network->npl + 1, network->outputs, network->weights[network->layers]);
+}
+
+
+static inline void nn_unserializeFunc(FILE *fp, int count1, int count2, double **matrix) {
+	int i, j;
+	for(i = 0; i < count1; i++) {
+		for(j = 0; j < count2 - 1; j++) {
+			fscanf(fp, "%lf\t", matrix[i] + j);
+		}
+		fscanf(fp, "%lf\n", matrix[i] + j);
+	}
+}
+
+NN *nn_unserialize(FILE *fp) {
+	NN *retVal;
+	int inputs, layers, npl, outputs, i;
+
+	fscanf(fp, "%d\t%d\t%d\t%d\n\n", &inputs, &layers, &npl, &outputs);
+	retVal = nn_create(inputs, layers, npl, outputs);
+	nn_unserializeFunc(fp, inputs + 1, npl, retVal->weights[0]);
+	fscanf(fp, "\n");
+	for(i = 1; i < layers; i++) {
+		nn_unserializeFunc(fp, npl + 1, npl, retVal->weights[i]);
+		fscanf(fp, "\n");
+	}
+	nn_unserializeFunc(fp, npl + 1, outputs, retVal->weights[layers]);
+
+	return retVal;
 }

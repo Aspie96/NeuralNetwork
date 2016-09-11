@@ -1,4 +1,5 @@
 #project
+data/
 
 #Code::Blocks
 *.depend
